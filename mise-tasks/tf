@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#MISE description="Run tofu in a stack, prompting for credentials: mise run tf <stack> <args...>"
+#USAGE arg "<stack>" help="openbao, platform, or apps"
+#USAGE arg "[args]..." help="tofu arguments, e.g. plan or apply"
+set -euo pipefail
+
+stack=$1
+shift
+dir="$MISE_PROJECT_ROOT/stacks/$stack"
+[ -d "$dir" ] || { echo "no such stack: $stack" >&2; exit 1; }
+[ -n "$AWS_ENDPOINT_URL_S3" ] || { echo "set AWS_ENDPOINT_URL_S3 in mise.toml" >&2; exit 1; }
+
+# Prompt for anything not already exported, e.g. from a password manager CLI.
+ask() {
+	[ -n "${!1:-}" ] && return
+	read -rsp "$2: " "$1"
+	echo >&2
+	export "${1?}"
+}
+
+ask TF_VAR_state_passphrase "State passphrase"
+ask AWS_ACCESS_KEY_ID "R2 state access key ID"
+ask AWS_SECRET_ACCESS_KEY "R2 state secret access key"
+ask RAILWAY_TOKEN "Railway account token"
+export TF_VAR_state_bucket=$STATE_BUCKET
+
+tofu() { command tofu -chdir="$1" "${@:2}"; }
+
+if [ ! -d "$dir/.terraform" ]; then
+	tofu "$dir" init -backend-config="$MISE_PROJECT_ROOT/backend.hcl" -backend-config="bucket=$STATE_BUCKET" >&2
+fi
+
+if [ "$stack" != openbao ]; then
+	export VAULT_ADDR
+	VAULT_ADDR=$(tofu "$MISE_PROJECT_ROOT/stacks/openbao" output -raw address)
+	export TF_VAR_openbao_addr=$VAULT_ADDR
+	# A short-lived admin token, never stored. Export VAULT_TOKEN to skip this,
+	# e.g. with the root token before userpass exists.
+	if [ -z "${VAULT_TOKEN:-}" ]; then
+		VAULT_TOKEN=$(BAO_ADDR=$VAULT_ADDR bao login -method=userpass -no-store -token-only username="$BAO_ADMIN_USER")
+		export VAULT_TOKEN
+	fi
+fi
+
+tofu "$dir" "$@"

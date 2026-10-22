@@ -4,6 +4,10 @@ openbao = "2.7.1"
 railway = "5.71.0"
 
 [env]
-# Bootstrap credentials stay out of git: RAILWAY_TOKEN, TF_VAR_state_passphrase,
-# and once OpenBao is up, VAULT_ADDR and VAULT_TOKEN.
-_.file = { path = ".env.local", redact = true }
+# Not secrets. Credentials are prompted by mise-tasks/tf and never written to
+# disk, so agents on a dev machine can't pick them up.
+STATE_BUCKET = "aria-infra-state"
+# Cloudflare R2 S3 API endpoint: https://<account-id>.r2.cloudflarestorage.com
+AWS_ENDPOINT_URL_S3 = ""
+# Your userpass login; see the README.
+BAO_ADMIN_USER = "aria"

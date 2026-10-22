@@ -1,5 +1,6 @@
 .terraform/
-*.tfplan
+*.tfstate
 *.tfstate.backup
+*.tfplan
 crash.log
 .env*.local

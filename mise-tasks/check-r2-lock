@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Check that R2 refuses a second conditional write, which state locking relies on"
+set -euo pipefail
+
+read -rsp "R2 state access key ID: " key && echo >&2
+read -rsp "R2 state secret access key: " secret && echo >&2
+url="$AWS_ENDPOINT_URL_S3/$STATE_BUCKET/.lock-check-$$"
+put() {
+	curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary probe -H 'If-None-Match: *' \
+		--aws-sigv4 'aws:amz:auto:s3' --user "$key:$secret" "$url"
+}
+
+first=$(put)
+second=$(put)
+curl -s -o /dev/null -X DELETE --aws-sigv4 'aws:amz:auto:s3' --user "$key:$secret" "$url"
+echo "first write: $first, second write: $second"
+if [ "$first" != 200 ] || [ "$second" != 412 ]; then
+	echo "R2 did not refuse the second write; don't rely on use_lockfile" >&2
+	exit 1
+fi
+echo "locking works"
