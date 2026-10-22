@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Give this machine a development-only OpenBao token for local dev"
+set -euo pipefail
+
+# Varlock in every app imports this file; nothing else reads it.
+file="$HOME/.config/openbao/.env.dev"
+addr=$(cd "$MISE_PROJECT_ROOT" && mise run --quiet tf openbao output -raw address)
+admin=$(BAO_ADDR=$addr bao login -method=userpass -no-store -token-only username="$BAO_ADMIN_USER")
+token=$(BAO_ADDR=$addr BAO_TOKEN=$admin bao token create -orphan -policy=developer -period=768h \
+	-display-name="dev-$(hostname)" -field=token)
+
+mkdir -p "$(dirname "$file")"
+umask 077
+printf 'OPENBAO_ADDR=%s\nOPENBAO_TOKEN=%s\n' "$addr" "$token" >"$file"
+echo "wrote $file; it reads */development only and expires after 32 days unused"
