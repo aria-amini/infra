@@ -1,0 +1,9 @@
+[tools]
+opentofu = "1.13.1"
+openbao = "2.7.1"
+railway = "5.71.0"
+
+[env]
+# Bootstrap credentials stay out of git: RAILWAY_TOKEN, TF_VAR_state_passphrase,
+# and once OpenBao is up, VAULT_ADDR and VAULT_TOKEN.
+_.file = { path = ".env.local", redact = true }
