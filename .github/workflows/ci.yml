@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.1
+      - run: tofu fmt -check -recursive
+      - name: validate
+        env:
+          TF_VAR_state_passphrase: ci-validate-only-passphrase
+        run: |
+          for stack in stacks/*/; do
+            tofu -chdir="$stack" init -backend=false -input=false
+            tofu -chdir="$stack" validate
+          done
+      - run: shellcheck mise-tasks/* stacks/platform/backup/backup.sh
