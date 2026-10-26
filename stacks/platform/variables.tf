@@ -29,3 +29,9 @@ variable "backup" {
   })
   sensitive = true
 }
+
+variable "github_repository" {
+  description = "The only repository whose workflows can log in to OpenBao."
+  type        = string
+  default     = "aria-amini/infra"
+}

@@ -42,6 +42,38 @@ resource "vault_auth_backend" "userpass" {
   type = "userpass"
 }
 
+# GitHub Actions logs in with its OIDC token, so no OpenBao credential is
+# stored in GitHub. Only the infra environment of this repo's main branch
+# gets a token; see .github/workflows.
+resource "vault_jwt_auth_backend" "github" {
+  path               = "github"
+  oidc_discovery_url = "https://token.actions.githubusercontent.com"
+  bound_issuer       = "https://token.actions.githubusercontent.com"
+}
+
+resource "vault_jwt_auth_backend_role" "ci" {
+  backend         = vault_jwt_auth_backend.github.path
+  role_name       = "ci"
+  role_type       = "jwt"
+  user_claim      = "repository"
+  bound_audiences = ["openbao"]
+
+  # Only the tofu workflow, started by hand on main. The bootstrap workflow
+  # uses the root token instead.
+  bound_claims = {
+    repository       = var.github_repository
+    environment      = "infra"
+    ref              = "refs/heads/main"
+    event_name       = "workflow_dispatch"
+    job_workflow_ref = "${var.github_repository}/.github/workflows/tofu.yml@refs/heads/main"
+  }
+
+  # Applying a stack needs to manage policies, auth backends, and AppRoles.
+  token_policies = [vault_policy.admin.name]
+  token_ttl      = 1800
+  token_max_ttl  = 3600
+}
+
 resource "vault_policy" "admin" {
   name = "admin"
 
