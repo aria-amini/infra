@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Only here so .railway/railway.ts can import railway/iac.",
+  "dependencies": {
+    "railway": "3.16.0"
+  }
+}

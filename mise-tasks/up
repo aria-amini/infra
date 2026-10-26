@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+#MISE description="Create or update the platform project and bring OpenBao up"
+# Safe to re-run: every step checks before it changes anything.
+set -euo pipefail
+
+: "${RAILWAY_API_TOKEN:?an account-level Railway token}"
+: "${PULUMI_ACCESS_TOKEN:?a Pulumi access token}"
+
+org=${PULUMI_ORG:-aria-amini}
+workspace=${RAILWAY_WORKSPACE:-applications}
+esc_env=$org/platform/bootstrap
+
+log() { echo "==> $*" >&2; }
+# Keep a secret out of GitHub Actions logs if it is ever echoed.
+mask() { [[ -z ${GITHUB_ACTIONS:-} ]] || echo "::add-mask::$1"; }
+
+wait_for() {
+  local what=$1 i
+  shift
+  for ((i = 0; i < 120; i++)); do
+    "$@" >/dev/null 2>&1 && return 0
+    sleep 5
+  done
+  echo "timed out waiting for $what" >&2
+  return 1
+}
+
+# Railway's edge now and then answers 404 for a moment (during a deploy swap), so
+# every bao call gets a few tries.
+bao() {
+  local i
+  for i in 1 2 3 4; do
+    command bao "$@" && return 0
+    sleep 4
+  done
+  return 1
+}
+
+# Bootstrap secrets live in one Pulumi ESC environment. It is read once, and a
+# failed read stops the run: treating "could not read" as "not set" would
+# generate a new unseal key over the real one, and the free tier keeps no history.
+esc_secrets='{}'
+esc_get() {
+  jq -r --arg k "$1" '.[$k] // empty' <<<"$esc_secrets"
+}
+esc_set() {
+  local i
+  [[ -z $(esc_get "$1") ]] || { echo "refusing to overwrite $1 in $esc_env" >&2; return 1; }
+  for i in 1 2 3; do
+    if printf %s "$2" | pulumi env set "$esc_env" "$1" --secret --string -f - >/dev/null; then
+      esc_secrets=$(jq -c --arg k "$1" --arg v "$2" '.[$k] = $v' <<<"$esc_secrets")
+      return 0
+    fi
+    sleep 2
+  done
+  echo "could not save $1 to $esc_env" >&2
+  return 1
+}
+
+log "Pulumi ESC environment $esc_env"
+if definition=$(pulumi env get "$esc_env" --definition 2>/dev/null); then
+  # An environment that was created but never given a value has nothing to open.
+  if grep -q values <<<"$definition"; then
+    esc_secrets=$(pulumi env open "$esc_env" --format json)
+  fi
+else
+  pulumi env init "$esc_env" >/dev/null
+fi
+
+# The Railway CLI's list and link need an account token; a workspace token only
+# works through the API, plus these two IDs for everything else.
+gql() {
+  # The token goes in through a config on stdin, not argv, where ps would show it.
+  printf 'header = "Authorization: Bearer %s"\n' "$RAILWAY_API_TOKEN" |
+    curl -fsS -K - https://backboard.railway.com/graphql/v2 \
+      -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg q "$1" '{query: $q}')" | jq -e 'if .errors then error(.errors[0].message) else . end'
+}
+
+log "Railway project"
+workspace_id=$(gql '{ apiToken { workspaces { id name } } }' |
+  jq -er --arg w "$workspace" '.data.apiToken.workspaces[] | select(.name == $w) | .id')
+project=$(gql "{ projects(workspaceId: \"$workspace_id\") { edges { node { id name deletedAt environments { edges { node { id name } } } } } } }" |
+  jq -c '[.data.projects.edges[].node | select(.name == "platform" and .deletedAt == null)][0] // empty')
+if [[ -z $project ]]; then
+  project=$(gql "mutation { projectCreate(input: {name: \"platform\", workspaceId: \"$workspace_id\"}) { id name environments { edges { node { id name } } } } }" |
+    jq -c .data.projectCreate)
+fi
+RAILWAY_PROJECT_ID=$(jq -er .id <<<"$project")
+RAILWAY_ENVIRONMENT_ID=$(jq -er '.environments.edges[].node | select(.name == "production") | .id' <<<"$project")
+export RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID
+npm ci --ignore-scripts --no-audit --no-fund >/dev/null
+railway config apply --yes
+
+# The static-seal key must exist in ESC before Railway ever sees it, and must
+# never be replaced: losing it makes every stored secret unreadable.
+unseal_key=$(esc_get unseal_key)
+if [[ -z $unseal_key ]]; then
+  log "Generating the unseal key"
+  unseal_key=$(openssl rand -base64 32)
+  mask "$unseal_key"
+  esc_set unseal_key "$unseal_key"
+fi
+mask "$unseal_key"
+
+current=$(railway variable list -s openbao --json | jq -r '.BAO_UNSEAL_KEY // empty')
+if [[ -z $current ]]; then
+  log "Giving Railway the unseal key"
+  printf %s "$unseal_key" | railway variable set BAO_UNSEAL_KEY --stdin -s openbao --skip-deploys >/dev/null
+  railway redeploy -s openbao --yes >/dev/null
+elif [[ $current != "$unseal_key" ]]; then
+  echo "Railway's BAO_UNSEAL_KEY differs from ESC; refusing to touch it." >&2
+  exit 1
+fi
+
+domain=$(railway variable list -s openbao --json | jq -er .RAILWAY_PUBLIC_DOMAIN)
+export BAO_ADDR=https://$domain
+health="$BAO_ADDR/v1/sys/health?uninitcode=200&sealedcode=200&standbycode=200"
+log "Waiting for OpenBao at $BAO_ADDR"
+wait_for "OpenBao" curl -fsS "$health"
+
+password=$(esc_get admin_password)
+if [[ -z $password ]]; then
+  password=$(openssl rand -base64 24 | tr -d '/+=')
+  esc_set admin_password "$password"
+fi
+mask "$password"
+
+if [[ $(curl -fsS "$health" | jq -r .initialized) == false ]]; then
+  log "Initializing OpenBao"
+  init=$(curl -fsS -X PUT "$BAO_ADDR/v1/sys/init" -d '{"recovery_shares":1,"recovery_threshold":1}')
+  root=$(jq -er .root_token <<<"$init")
+  recovery=$(jq -er '.recovery_keys_base64[0]' <<<"$init")
+  mask "$root"
+  mask "$recovery"
+  esc_set recovery_key "$recovery"
+  # Plain /health answers 200 only once the node is initialized, unsealed and active.
+  wait_for "OpenBao to become active" curl -fsS "$BAO_ADDR/v1/sys/health"
+
+  # The root token cannot be minted again (OpenBao 2.7 has no unauthenticated
+  # root generation), so spend it right away on the admin user, then revoke it.
+  log "Creating the admin user"
+  BAO_TOKEN=$root
+  export BAO_TOKEN
+  bao policy write admin policies/admin.hcl
+  bao auth enable userpass
+  printf %s "$password" | bao write auth/userpass/users/admin password=- policies=admin >/dev/null
+  bao token revoke -self >/dev/null 2>&1 || true
+  if curl -fsS -H "X-Vault-Token: $root" "$BAO_ADDR/v1/auth/token/lookup-self" >/dev/null 2>&1; then
+    echo "the root token is still valid after revoking it" >&2
+    exit 1
+  fi
+  unset BAO_TOKEN
+fi
+wait_for "OpenBao to become active" curl -fsS "$BAO_ADDR/v1/sys/health"
+
+log "Signing in as admin"
+if ! BAO_TOKEN=$(printf %s "$password" | bao login -method=userpass -token-only username=admin password=- 2>/dev/null); then
+  cat >&2 <<MSG
+admin cannot sign in. If OpenBao was initialized but the admin user was never
+created, and nothing is stored in it yet, delete the openbao volume in Railway
+and run this again to start from an empty server.
+MSG
+  exit 1
+fi
+mask "$BAO_TOKEN"
+export BAO_TOKEN
+
+log "Configuring OpenBao"
+bao secrets list -format=json | jq -e '."secret/"' >/dev/null || bao secrets enable -path=secret -version=2 kv
+bao auth list -format=json | jq -e '."approle/"' >/dev/null || bao auth enable approle
+bao policy write admin policies/admin.hcl
+
+log "Done. OpenBao is at $BAO_ADDR; sign in as admin (password in $esc_env)."

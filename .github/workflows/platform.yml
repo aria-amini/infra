@@ -1,0 +1,30 @@
+name: platform
+
+# Brings up (or repairs) the platform Railway project and OpenBao. Idempotent.
+# Secrets come from the `infra` environment, which only `main` may use.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: platform
+
+jobs:
+  up:
+    name: Bring up OpenBao
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    environment: infra
+    env:
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+    steps:
+      # This job can read every bootstrap secret, so actions stay pinned to a
+      # commit (a tag can be moved); the comment names the version.
+      - name: Check out the repo
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Install the pinned tools with mise
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - name: Create or repair the platform
+        run: mise run up
