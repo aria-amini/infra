@@ -1,0 +1,55 @@
+name: tofu
+
+# Plan or apply one stack. Manual on purpose: the infra environment is
+# restricted to main, and starting the run is the approval.
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack to run
+        type: choice
+        options: [openbao, platform, apps]
+        required: true
+      action:
+        description: plan shows changes; apply makes them
+        type: choice
+        options: [plan, apply]
+        default: plan
+        required: true
+      args:
+        description: "Extra tofu arguments, e.g. -replace=vault_token.backup"
+        type: string
+        default: ""
+
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  tofu:
+    runs-on: ubuntu-24.04
+    environment: infra
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5
+      - name: Run
+        env:
+          STACK: ${{ inputs.stack }}
+          ACTION: ${{ inputs.action }}
+          ARGS: ${{ inputs.args }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          TF_VAR_state_passphrase: ${{ secrets.TF_VAR_STATE_PASSPHRASE }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          flags=(-input=false)
+          [ "$ACTION" = apply ] && flags+=(-auto-approve)
+          # ARGS is deliberately word-split: it is a list of tofu arguments.
+          # shellcheck disable=SC2086
+          mise run tf "$STACK" "$ACTION" "${flags[@]}" $ARGS
