@@ -10,7 +10,22 @@ permissions:
 
 jobs:
   lint:
+    name: Lint scripts and typecheck Pulumi
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - run: shellcheck mise-tasks/*
+      - name: Check out the repo
+        uses: actions/checkout@v7
+      - name: Lint the shell tasks
+        run: shellcheck mise-tasks/*
+      - name: Set up Node and the npm cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pulumi/package-lock.json
+      - name: Install the Pulumi program's dependencies
+        working-directory: pulumi
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck the Pulumi program
+        working-directory: pulumi
+        run: npx tsc --noEmit

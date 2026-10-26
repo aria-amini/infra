@@ -166,9 +166,19 @@ fi
 mask "$BAO_TOKEN"
 export BAO_TOKEN
 
-log "Configuring OpenBao"
-bao secrets list -format=json | jq -e '."secret/"' >/dev/null || bao secrets enable -path=secret -version=2 kv
-bao auth list -format=json | jq -e '."approle/"' >/dev/null || bao auth enable approle
-bao policy write admin policies/admin.hcl
+# The KV mount and the dev policy live in pulumi/ (state in Pulumi Cloud). The
+# program holds no secret values. Pulumi's Vault provider speaks the same API
+# OpenBao does.
+log "Applying OpenBao config with Pulumi"
+export VAULT_ADDR=$BAO_ADDR VAULT_TOKEN=$BAO_TOKEN
+(
+  cd pulumi
+  npm ci --ignore-scripts --no-audit --no-fund >/dev/null
+  pulumi stack select --create "$org/prod" >/dev/null
+  pulumi up --yes --refresh --skip-preview --non-interactive
+)
+
+# `mise run dev-token` finds the server here. The address is not a secret.
+pulumi env set "$esc_env" openbao_addr "$BAO_ADDR" --string >/dev/null
 
 log "Done. OpenBao is at $BAO_ADDR; sign in as admin (password in $esc_env)."
