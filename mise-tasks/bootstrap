@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#MISE description="GitHub Actions only: one-time OpenBao bootstrap; writes an age-encrypted bundle of what to keep"
+set -euo pipefail
+
+: "${BOOTSTRAP_AGE_RECIPIENT:?public age key that can read the bundle}"
+: "${BOOTSTRAP_BUNDLE:?path to write the encrypted bundle}"
+
+tf() { mise run --quiet tf "$@"; }
+
+# Poll a URL until it answers 2xx.
+wait_for() {
+	for _ in $(seq 60); do
+		curl -fsS "$1" >/dev/null 2>&1 && return
+		sleep 10
+	done
+	echo "gave up waiting for $1" >&2
+	return 1
+}
+
+# Fail before anything irreversible if the recipient is wrong.
+echo x | age -r "$BOOTSTRAP_AGE_RECIPIENT" -o /dev/null
+mise run --quiet check-r2-lock
+
+tf openbao apply -input=false -auto-approve
+addr=$(tf openbao output -raw address)
+export BAO_ADDR=$addr
+
+wait_for "$addr/v1/sys/init"
+if [ "$(curl -fsS "$addr/v1/sys/init" | jq -er .initialized)" = true ]; then
+	echo "OpenBao is already initialized; use the tofu workflow for changes" >&2
+	exit 1
+fi
+
+# Everything the bundle holds, except what init returns, is known before init,
+# so nothing can fail between init and writing the bundle but init itself.
+unseal=$(tf openbao output -raw unseal_key)
+password=$(openssl rand -base64 24)
+echo "::add-mask::$unseal" >&2
+echo "::add-mask::$password" >&2
+
+init=$(bao operator init -format=json -recovery-shares=1 -recovery-threshold=1)
+root=$(jq -er .root_token <<<"$init")
+recovery=$(jq -er '.recovery_keys_b64[0]' <<<"$init")
+echo "::add-mask::$root" >&2
+echo "::add-mask::$recovery" >&2
+
+jq -n --arg root "$root" --arg recovery "$recovery" --arg unseal "$unseal" \
+	--arg user "$BAO_ADMIN_USER" --arg password "$password" \
+	'{root_token: $root, recovery_key: $recovery, unseal_key: $unseal, admin_user: $user, admin_password: $password}' |
+	age -r "$BOOTSTRAP_AGE_RECIPIENT" -o "$BOOTSTRAP_BUNDLE"
+echo "wrote the encrypted bundle" >&2
+
+# Auto-unseal and leader election take a few seconds after init.
+wait_for "$addr/v1/sys/health"
+
+# The root token is used for this one apply, then revoked.
+VAULT_TOKEN=$root tf platform apply -input=false -auto-approve
+printf '%s' "$password" |
+	BAO_TOKEN=$root bao write "auth/userpass/users/$BAO_ADMIN_USER" \
+		password=- token_policies=admin token_ttl=1h token_max_ttl=4h
+BAO_TOKEN=$root bao token revoke -self
+echo "bootstrapped; root token revoked" >&2
