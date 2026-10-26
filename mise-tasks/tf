@@ -26,20 +26,43 @@ export TF_VAR_state_bucket=$STATE_BUCKET
 
 tofu() { command tofu -chdir="$1" "${@:2}"; }
 
-if [ ! -d "$dir/.terraform" ]; then
-	tofu "$dir" init -backend-config="$MISE_PROJECT_ROOT/backend.hcl" -backend-config="bucket=$STATE_BUCKET" >&2
-fi
+init() {
+	[ -d "$1/.terraform" ] ||
+		tofu "$1" init -input=false -backend-config="$MISE_PROJECT_ROOT/backend.hcl" -backend-config="bucket=$STATE_BUCKET" >&2
+}
+
+init "$dir"
 
 if [ "$stack" != openbao ]; then
+	# A fresh checkout (CI) has not initialised the openbao stack either.
+	init "$MISE_PROJECT_ROOT/stacks/openbao"
 	export VAULT_ADDR
 	VAULT_ADDR=$(tofu "$MISE_PROJECT_ROOT/stacks/openbao" output -raw address)
 	export TF_VAR_openbao_addr=$VAULT_ADDR
 	# A short-lived admin token, never stored. Export VAULT_TOKEN to skip this,
 	# e.g. with the root token before userpass exists.
-	if [ -z "${VAULT_TOKEN:-}" ]; then
+	if [ -z "${VAULT_TOKEN:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+		# GitHub Actions: trade the job's OIDC token for one.
+		jwt=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+			"$ACTIONS_ID_TOKEN_REQUEST_URL&audience=openbao" | jq -er .value)
+		VAULT_TOKEN=$(jq -n --arg jwt "$jwt" '{role: "ci", jwt: $jwt}' |
+			curl -fsS --data @- "$VAULT_ADDR/v1/auth/github/login" | jq -er .auth.client_token)
+		echo "::add-mask::$VAULT_TOKEN" >&2
+		export VAULT_TOKEN
+	elif [ -z "${VAULT_TOKEN:-}" ]; then
 		VAULT_TOKEN=$(BAO_ADDR=$VAULT_ADDR bao login -method=userpass -no-store -token-only username="$BAO_ADMIN_USER")
 		export VAULT_TOKEN
 	fi
+fi
+
+# CI describes the backup bucket from its secrets; locally, export TF_VAR_backup.
+if [ "$stack" = platform ] && [ -z "${TF_VAR_backup:-}" ] && [ -n "${BACKUP_S3_ACCESS_KEY_ID:-}" ]; then
+	TF_VAR_backup=$(jq -cn \
+		--arg endpoint "$AWS_ENDPOINT_URL_S3" \
+		--arg id "$BACKUP_S3_ACCESS_KEY_ID" \
+		--arg secret "$BACKUP_S3_SECRET_ACCESS_KEY" \
+		'{endpoint: $endpoint, bucket: "aria-openbao-backups", access_key_id: $id, secret_access_key: $secret}')
+	export TF_VAR_backup
 fi
 
 tofu "$dir" "$@"

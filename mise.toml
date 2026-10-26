@@ -1,13 +1,15 @@
 [tools]
 opentofu = "1.13.1"
+jq = "1.8.1"
 openbao = "2.7.1"
 railway = "5.71.0"
 
 [env]
 # Not secrets. Credentials are prompted by mise-tasks/tf and never written to
-# disk, so agents on a dev machine can't pick them up.
+# disk, so agents on a dev machine can't pick them up. In GitHub Actions they
+# come from the infra environment instead.
 STATE_BUCKET = "aria-infra-state"
 # Cloudflare R2 S3 API endpoint: https://<account-id>.r2.cloudflarestorage.com
-AWS_ENDPOINT_URL_S3 = ""
+AWS_ENDPOINT_URL_S3 = "https://eb48530e2bfbc780eb77708e32d7e068.r2.cloudflarestorage.com"
 # Your userpass login; see the README.
 BAO_ADMIN_USER = "aria"
