@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Write a read-only OpenBao token for this machine to ~/.config/openbao/.env.dev"
+# Needs a Pulumi login that can read the platform/bootstrap ESC environment.
+set -euo pipefail
+
+org=${PULUMI_ORG:-aria-amini}
+esc_env=$org/platform/bootstrap
+out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/.env.dev}
+
+secrets=$(pulumi env open "$esc_env" --format json)
+BAO_ADDR=$(jq -er .openbao_addr <<<"$secrets")
+export BAO_ADDR
+
+admin=$(jq -ej .admin_password <<<"$secrets" |
+  bao login -method=userpass -token-only username=admin password=-)
+
+# Orphaned, so it outlives the admin token that created it. Renew it with
+# `bao token renew` before the TTL ends, or run this task again.
+dev=$(BAO_TOKEN=$admin bao token create -orphan -policy=dev -ttl=720h \
+  -display-name="dev-$(hostname -s)" -field=token)
+BAO_TOKEN=$admin bao token revoke -self >/dev/null
+
+mkdir -p "$(dirname "$out")"
+(
+  umask 077
+  printf 'OPENBAO_ADDR=%s\nOPENBAO_TOKEN=%s\n' "$BAO_ADDR" "$dev" >"$out.tmp"
+  mv "$out.tmp" "$out"
+)
+echo "Wrote $out (30 days, reads secret/shared/development)" >&2
