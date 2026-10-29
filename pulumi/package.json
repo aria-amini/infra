@@ -1,0 +1,12 @@
+{
+  "name": "platform-openbao",
+  "private": true,
+  "dependencies": {
+    "@pulumi/pulumi": "3.272.0",
+    "@pulumi/vault": "7.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "typescript": "5.9.3"
+  }
+}

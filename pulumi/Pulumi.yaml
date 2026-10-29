@@ -1,0 +1,6 @@
+name: platform
+description: OpenBao's mounts, AppRole logins, and per-app policies.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: npm

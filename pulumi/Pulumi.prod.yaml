@@ -1,0 +1,4 @@
+config:
+  # The up task signs in as admin and passes VAULT_ADDR and VAULT_TOKEN.
+  # A child token would need token-create rights we don't need to hand out.
+  vault:skipChildToken: "true"

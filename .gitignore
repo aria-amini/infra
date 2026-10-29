@@ -3,3 +3,4 @@
 *.tfstate.backup
 crash.log
 .env*.local
+node_modules/
