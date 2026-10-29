@@ -1,0 +1,10 @@
+{
+  "dutch-oven": {
+    "railwayProject": "951d41c1-6b81-4792-af4a-024217a42d63",
+    "service": "dutch-oven",
+    "environments": {
+      "production": "production",
+      "staging": "preview"
+    }
+  }
+}
