@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#MISE description="Give an app's Railway environments their OpenBao login"
+# Usage: mise run onboard <app> [environment]
+# Needs a Pulumi login that can open platform/bootstrap, and a Railway login.
+# Safe to re-run: an environment whose Railway login still works is skipped.
+set -euo pipefail
+
+app=${1:?usage: mise run onboard <app> [environment]}
+only=${2:-}
+esc_env=${PULUMI_ORG:-aria-amini}/platform/bootstrap
+
+registry=$(jq -ec --arg a "$app" '.[$a] // empty' "$(dirname "$0")/../apps.json") || {
+  echo "$app is not in apps.json" >&2
+  exit 1
+}
+if [[ -n $only ]] && ! jq -e --arg o "$only" '.environments | has($o)' <<<"$registry" >/dev/null; then
+  echo "$app has no environment $only in apps.json" >&2
+  exit 1
+fi
+RAILWAY_PROJECT_ID=$(jq -er .railwayProject <<<"$registry")
+export RAILWAY_PROJECT_ID
+service=$(jq -er .service <<<"$registry")
+
+secrets=$(pulumi env open "$esc_env" --format json)
+BAO_ADDR=$(jq -er .openbao_addr <<<"$secrets")
+export BAO_ADDR
+admin=$(jq -ej .admin_password <<<"$secrets" |
+  bao login -method=userpass -token-only username=admin password=-)
+trap 'BAO_TOKEN=$admin bao token revoke -self >/dev/null 2>&1 || true' EXIT
+
+# Read the list on fd 3 so no command inside the loop can consume it from stdin.
+while read -r environment <&3; do
+  role=$app-$environment
+  role_id=$(BAO_TOKEN=$admin bao read -field=role_id "auth/approle/role/$role/role-id") || {
+    echo "no OpenBao role $role; run the platform workflow first" >&2
+    exit 1
+  }
+  vars=$(railway variable list -e "$environment" -s "$service" --json)
+
+  # Does the login Railway already holds still work?
+  current=$(jq -r '.VAULT_SECRET_ID // empty' <<<"$vars")
+  if [[ -n $current &&
+    $(jq -r .VAULT_ROLE_ID <<<"$vars") == "$role_id" &&
+    $(jq -r .OPENBAO_ADDR <<<"$vars") == "$BAO_ADDR" ]] &&
+    printf %s "$current" |
+      env -u BAO_TOKEN bao write -format=json auth/approle/login role_id="$role_id" secret_id=- >/dev/null 2>&1; then
+    echo "==> $app/$environment already works" >&2
+    continue
+  fi
+
+  secret_id=$(BAO_TOKEN=$admin bao write -f -field=secret_id "auth/approle/role/$role/secret-id")
+  railway variable set "OPENBAO_ADDR=$BAO_ADDR" "VAULT_ROLE_ID=$role_id" \
+    -e "$environment" -s "$service" --skip-deploys >/dev/null
+  printf %s "$secret_id" |
+    railway variable set VAULT_SECRET_ID --stdin -e "$environment" -s "$service" --skip-deploys >/dev/null
+  echo "==> $app/$environment logged in (no deploy triggered)" >&2
+done 3< <(jq -r --arg o "$only" '.environments | keys[] | select($o == "" or . == $o)' <<<"$registry")
