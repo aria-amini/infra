@@ -1,0 +1,30 @@
+# Copy this file into each repo. All logic lives in actions/review-gate.
+name: review-gate
+
+on:
+  # pull_request_target runs this file from the base branch, so a PR cannot edit its own gate.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Re-check when CodeRabbit approves or a review is dismissed.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: write # severity labels
+  statuses: write
+
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Require the `review-gate` commit status this job posts, not the job itself.
+  run:
+    name: review-gate-run
+    runs-on: ubuntu-24.04
+    steps:
+      # No checkout: the gate reads the PR through the API and never runs PR code.
+      - uses: aria-amini/infra/actions/review-gate@main
+        with:
+          typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
