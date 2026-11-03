@@ -173,3 +173,9 @@ After the platform workflow creates the service and AppRole, run
 `mise run onboard oauth-broker`. Trigger a broker deployment after onboarding
 and entering the OpenBao values. The `/health` endpoint only checks process
 liveness; verify a full Google sign-in separately.
+
+## Review gate
+
+`actions/review-gate` decides whether a PR in any of my repos needs a
+CodeRabbit review or may merge on CI alone. See its
+[README](actions/review-gate/README.md).
