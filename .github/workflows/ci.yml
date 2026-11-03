@@ -29,3 +29,22 @@ jobs:
       - name: Typecheck the Pulumi program
         working-directory: pulumi
         run: npx tsc --noEmit
+
+  oauth-broker:
+    name: Test shared OAuth broker
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: oauth-broker/package-lock.json
+      - name: Install dependencies
+        working-directory: oauth-broker
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test the broker
+        working-directory: oauth-broker
+        run: npm test

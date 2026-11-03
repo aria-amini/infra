@@ -147,3 +147,25 @@ pulumi env open aria-amini/platform/bootstrap --format json | jq -r .admin_passw
   volume in Railway and run `up` again.
 - **Audit log.** Not enabled yet. OpenBao 2.7 takes audit devices from the
   server config, not the API.
+
+## Shared development OAuth broker
+
+The `oauth-broker` service is a callback-only Better Auth OAuth proxy for trusted
+local and preview apps. It does not create app users or persist sessions. Railway
+Serverless can sleep it between requests; a cold callback can fail, so test the
+wake-up flow before depending on it. Google must register the broker's public
+`/api/auth/callback/google` URL as an authorized redirect URI.
+
+Onboarding creates a dedicated `oauth-broker/production` AppRole. Populate
+`secret/oauth-broker/production` with `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `OAUTH_PROXY_SECRET`. Participating trusted apps
+need that same Google client and proxy secret in their own development/preview
+secret paths, an explicit trusted origin configuration, and a compatible Better
+Auth proxy version. Do not copy the production apps' proxy secret into this
+broker. Sharing this development proxy secret grants authentication authority
+across participating apps; do not expose it to untrusted preview code.
+
+After the platform workflow creates the service and AppRole, run
+`mise run onboard oauth-broker`. Trigger a broker deployment after onboarding
+and entering the OpenBao values. The `/health` endpoint only checks process
+liveness; verify a full Google sign-in separately.
