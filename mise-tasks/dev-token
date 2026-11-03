@@ -5,7 +5,12 @@ set -euo pipefail
 
 org=${PULUMI_ORG:-aria-amini}
 esc_env=$org/platform/bootstrap
-out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/.env.dev}
+app=${1:-}
+case "$app" in
+  "") out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/.env.dev}; token_name=OPENBAO_TOKEN; policies=(-policy=dev) ;;
+  dutch-oven) out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/.env.dutch-oven.dev}; token_name=OPENBAO_APP_TOKEN; policies=(-policy=dev -policy=dutch-oven-dev) ;;
+  *) echo "usage: mise run dev-token [dutch-oven]" >&2; exit 1 ;;
+esac
 
 secrets=$(pulumi env open "$esc_env" --format json)
 BAO_ADDR=$(jq -er .openbao_addr <<<"$secrets")
@@ -16,14 +21,14 @@ admin=$(jq -ej .admin_password <<<"$secrets" |
 
 # Orphaned, so it outlives the admin token that created it. Renew it with
 # `bao token renew` before the TTL ends, or run this task again.
-dev=$(BAO_TOKEN=$admin bao token create -orphan -policy=dev -ttl=720h \
+dev=$(BAO_TOKEN=$admin bao token create -orphan "${policies[@]}" -ttl=720h \
   -display-name="dev-$(hostname -s)" -field=token)
 BAO_TOKEN=$admin bao token revoke -self >/dev/null
 
 mkdir -p "$(dirname "$out")"
 (
   umask 077
-  printf 'OPENBAO_ADDR=%s\nOPENBAO_TOKEN=%s\n' "$BAO_ADDR" "$dev" >"$out.tmp"
+  printf 'OPENBAO_ADDR=%s\n%s=%s\n' "$BAO_ADDR" "$token_name" "$dev" >"$out.tmp"
   mv "$out.tmp" "$out"
 )
-echo "Wrote $out (30 days, reads secret/shared/development)" >&2
+echo "Wrote $out (30 days${app:+, with $app development access})" >&2
