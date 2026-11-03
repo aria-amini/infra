@@ -23,6 +23,9 @@ new vault.Policy("dev", {
 path "${kv.path}/data/shared/development" {
   capabilities = ["read"]
 }
+path "${kv.path}/data/oauth-broker/production" {
+  capabilities = ["read"]
+}
 `,
 });
 
@@ -59,6 +62,9 @@ path "${kv.path}/data/${app}/${tier}" {
 path "${kv.path}/data/shared/${tier}" {
   capabilities = ["read"]
 }
+${tier === "preview" ? pulumi.interpolate`path "${kv.path}/data/oauth-broker/production" {
+  capabilities = ["read"]
+}` : ""}
 `,
     });
 

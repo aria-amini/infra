@@ -158,10 +158,9 @@ wake-up flow before depending on it. Google must register the broker's public
 
 Onboarding creates a dedicated `oauth-broker/production` AppRole. Populate
 `secret/oauth-broker/production` with `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, and `OAUTH_PROXY_SECRET`. Participating trusted apps
-need that same Google client and proxy secret in their own development/preview
-secret paths, an explicit trusted origin configuration, and a compatible Better
-Auth proxy version. Do not copy the production apps' proxy secret into this
+`GOOGLE_CLIENT_SECRET`, and `OAUTH_PROXY_SECRET`. Trusted development machines and preview apps read those same values from the
+broker's path. Participating apps need an explicit trusted origin configuration
+and a compatible Better Auth proxy version. Do not copy the production apps' proxy secret into this
 broker. Sharing this development proxy secret grants authentication authority
 across participating apps; do not expose it to untrusted preview code.
 
