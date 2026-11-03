@@ -29,6 +29,16 @@ path "${kv.path}/data/oauth-broker/production" {
 `,
 });
 
+// App-specific development access is attached only to Dutch Oven's token.
+new vault.Policy("dutch-oven-dev", {
+  name: "dutch-oven-dev",
+  policy: pulumi.interpolate`
+path "${kv.path}/data/dutch-oven/development" {
+  capabilities = ["read"]
+}
+`,
+});
+
 const approle = new vault.AuthBackend("approle", {
   type: "approle",
   path: "approle",

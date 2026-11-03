@@ -101,6 +101,11 @@ Each dev machine gets its own read-only token, valid for 30 days and limited to
 mise run dev-token
 ```
 
+For Dutch Oven, after its development policy has been applied, run
+`mise run dev-token dutch-oven` to write a separate token to
+`~/.config/openbao/.env.dutch-oven.dev`. It can also read
+`secret/dutch-oven/development`; the shared token remains unchanged.
+
 It reads the admin password from ESC (so it needs a Pulumi login that can open
 `aria-amini/platform/bootstrap`), mints an orphaned token on the `dev` policy,
 revokes the admin session, and writes `~/.config/openbao/.env.dev` with mode
