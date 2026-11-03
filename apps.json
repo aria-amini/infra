@@ -6,5 +6,12 @@
       "production": "production",
       "staging": "preview"
     }
+  },
+  "oauth-broker": {
+    "railwayProject": "5b46f9e5-3440-4d85-a229-e0ca89922b36",
+    "service": "oauth-broker",
+    "environments": {
+      "production": "production"
+    }
   }
 }

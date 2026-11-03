@@ -1,0 +1,17 @@
+{
+  "name": "shared-oauth-broker",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "varlock run -- node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@varlock/hashicorp-vault-plugin": "2.1.2",
+    "better-auth": "1.7.7",
+    "varlock": "1.23.0"
+  }
+}

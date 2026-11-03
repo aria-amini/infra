@@ -1,4 +1,4 @@
-import { defineRailway, image, preserve, project, service, volume } from "railway/iac";
+import { defineRailway, github, image, preserve, project, service, volume } from "railway/iac";
 
 // OpenBao reads this file on boot; only the unseal key stays out of git.
 const config = {
@@ -35,5 +35,17 @@ export default defineRailway(() => {
     },
   });
 
-  return project("platform", { resources: [data, openbao] });
+  const oauthBroker = service("oauth-broker", {
+    source: github("aria-amini/infra", { branch: "main", rootDirectory: "/oauth-broker" }),
+    deploy: { sleepApplication: true, healthcheckPath: "/health", healthcheckTimeout: 120 },
+    networking: { serviceDomains: { "*": { port: 8080 } } },
+    env: {
+      PORT: "8080",
+      OPENBAO_ADDR: preserve(),
+      VAULT_ROLE_ID: preserve(),
+      VAULT_SECRET_ID: preserve(),
+    },
+  });
+
+  return project("platform", { resources: [data, openbao, oauthBroker] });
 });
