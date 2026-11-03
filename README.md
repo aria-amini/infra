@@ -103,7 +103,7 @@ mise run dev-token
 
 For Dutch Oven, after its development policy has been applied, run
 `mise run dev-token dutch-oven` to write a separate token to
-`~/.config/openbao/.env.dutch-oven.dev`. It can also read
+`~/.config/openbao/dutch-oven/.env.dev`. It can also read
 `secret/dutch-oven/development`; the shared token remains unchanged.
 
 It reads the admin password from ESC (so it needs a Pulumi login that can open
