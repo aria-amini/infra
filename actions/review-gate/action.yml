@@ -1,0 +1,31 @@
+name: Review gate
+description: >-
+  Posts a review-gate commit status. It succeeds when a PR may merge without a CodeRabbit review: either CodeRabbit
+  approved the head commit, or fixed path rules pass and Jev rates the change
+  low risk. Fails closed.
+inputs:
+  github-token:
+    description: Token with contents read, and pull-requests and statuses write.
+    default: ${{ github.token }}
+  typesafe-api-key:
+    description: TypeSafe API key for Jev. Without it every change needs full review.
+    default: ""
+outputs:
+  tier:
+    description: approved, low, or full.
+    value: ${{ steps.gate.outputs.tier }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    - id: gate
+      shell: bash
+      # The action reads PR data through the API only. It never checks out or runs PR code.
+      run: node "$GITHUB_ACTION_PATH/src/gate.ts"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        TYPESAFE_API_KEY: ${{ inputs.typesafe-api-key }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
