@@ -1,7 +1,7 @@
 {
-  "dutch-oven": {
+  "cocochef": {
     "railwayProject": "951d41c1-6b81-4792-af4a-024217a42d63",
-    "service": "dutch-oven",
+    "service": "cocochef",
     "environments": {
       "production": "production",
       "staging": "preview"
