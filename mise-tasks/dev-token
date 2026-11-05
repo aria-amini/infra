@@ -8,8 +8,8 @@ esc_env=$org/platform/bootstrap
 app=${1:-}
 case "$app" in
   "") out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/.env.dev}; token_name=OPENBAO_TOKEN; policies=(-policy=dev) ;;
-  dutch-oven) out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/dutch-oven/.env.dev}; token_name=OPENBAO_APP_TOKEN; policies=(-policy=dev -policy=dutch-oven-dev) ;;
-  *) echo "usage: mise run dev-token [dutch-oven]" >&2; exit 1 ;;
+  cocochef) out=${OPENBAO_DEV_ENV:-$HOME/.config/openbao/cocochef/.env.dev}; token_name=OPENBAO_APP_TOKEN; policies=(-policy=dev -policy=cocochef-dev) ;;
+  *) echo "usage: mise run dev-token [cocochef]" >&2; exit 1 ;;
 esac
 
 secrets=$(pulumi env open "$esc_env" --format json)

@@ -63,7 +63,7 @@ script. Apps read them with varlock's `vaultSecret()`.
    environment they are based on when they are created, so each app's PR
    environments must be based on its `staging` environment, never `production`:
    a PR environment based on production would hold the production login, and
-   PR code could read production secrets. (Verified for dutch-oven: a PR
+   PR code could read production secrets. (Verified for cocochef: a PR
    environment carries staging's login, not production's.)
 3. Type the app's secrets into `secret/<app>/<tier>`.
 
@@ -101,10 +101,10 @@ Each dev machine gets its own read-only token, valid for 30 days and limited to
 mise run dev-token
 ```
 
-For Dutch Oven, after its development policy has been applied, run
-`mise run dev-token dutch-oven` to write a separate token to
-`~/.config/openbao/dutch-oven/.env.dev`. It can also read
-`secret/dutch-oven/development`; the shared token remains unchanged.
+For Cocochef, after its development policy has been applied, run
+`mise run dev-token cocochef` to write a separate token to
+`~/.config/openbao/cocochef/.env.dev`. It can also read
+`secret/cocochef/development`; the shared token remains unchanged.
 
 It reads the admin password from ESC (so it needs a Pulumi login that can open
 `aria-amini/platform/bootstrap`), mints an orphaned token on the `dev` policy,
